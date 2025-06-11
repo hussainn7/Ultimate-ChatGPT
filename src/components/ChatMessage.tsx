@@ -7,7 +7,7 @@ interface ChatMessageProps {
   message: Message;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) => {
   const formatContent = (content: string) => {
     return content
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -60,6 +60,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
       </div>
     </div>
   );
-};
+});
 
 export default ChatMessage;

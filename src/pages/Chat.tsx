@@ -284,11 +284,22 @@ const Chat = () => {
                 )}
                 
                 <div className="space-y-6">
-                  {messages.map((message) => (
-                    <ChatMessage key={message.id} message={message} />
-                  ))}
+                  {messages.map((message) => {
+                    // Skip rendering empty bot messages (these are placeholders for typing)
+                    if (!message.isUser && !message.content) return null;
+                    return (
+                      <ChatMessage 
+                        key={`message-${message.id}`} 
+                        message={message} 
+                      />
+                    );
+                  })}
                   
-                  {isTyping && <TypingIndicator />}
+                  {isTyping && messages.length > 0 &&
+                   !messages[messages.length - 1].isUser && 
+                   messages[messages.length - 1].content === '' && 
+                    <TypingIndicator />
+                  }
                 </div>
                 <div ref={messagesEndRef} />
               </div>
