@@ -1,18 +1,22 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, Sun, Moon, Plus, MessageSquare } from 'lucide-react';
+import { Menu, Sun, Moon, Plus, MessageSquare, Settings, X } from 'lucide-react';
 import ChatMessage from '../components/ChatMessage';
 import MessageInput from '../components/MessageInput';
 import TypingIndicator from '../components/TypingIndicator';
+import AdminPanel from '../components/AdminPanel';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Message } from '../types/chat';
 
 const Chat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [selectedModel, setSelectedModel] = useState('gpt-4o');
   const [chatHistory, setChatHistory] = useState<{ id: string; title: string; date: string }[]>([
     { id: '1', title: 'Вопрос о программировании', date: 'Сегодня' },
     { id: '2', title: 'Помощь с дизайном', date: 'Вчера' },
@@ -71,7 +75,7 @@ const Chat = () => {
     setMessages(prev => [...prev, userMessage]);
     
     if (isConnected) {
-      sendMessage({ message: content });
+      sendMessage({ message: content, apiKey, model: selectedModel });
     } else {
       simulateAIResponse(content);
     }
@@ -131,13 +135,19 @@ const Chat = () => {
     setIsSidebarOpen(false);
   };
 
+  const handleAdminSave = (newApiKey: string, newModel: string) => {
+    setApiKey(newApiKey);
+    setSelectedModel(newModel);
+    setIsAdminPanelOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-80 bg-card border-r border-border transform transition-transform duration-200 ease-in-out ${
-        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } lg:translate-x-0 lg:static lg:inset-0`}>
-        <div className="flex flex-col h-full">
+      <div className={`fixed inset-y-0 left-0 z-50 bg-card border-r border-border transform transition-transform duration-200 ease-in-out ${
+        isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-0'
+      } lg:static lg:inset-0`}>
+        <div className={`flex flex-col h-full ${isSidebarOpen ? 'w-80' : 'w-0'} overflow-hidden`}>
           {/* Sidebar Header */}
           <div className="p-4 border-b border-border">
             <button
@@ -204,7 +214,7 @@ const Chat = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden"
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
               >
                 <Menu size={20} />
               </button>
@@ -215,6 +225,15 @@ const Chat = () => {
                 </p>
               </div>
             </div>
+            
+            {/* Admin Panel Button */}
+            <button
+              onClick={() => setIsAdminPanelOpen(true)}
+              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              title="Настройки администратора"
+            >
+              <Settings size={20} />
+            </button>
           </div>
         </header>
 
@@ -256,6 +275,17 @@ const Chat = () => {
           </div>
         </main>
       </div>
+
+      {/* Admin Panel Modal */}
+      {isAdminPanelOpen && (
+        <AdminPanel
+          isOpen={isAdminPanelOpen}
+          onClose={() => setIsAdminPanelOpen(false)}
+          onSave={handleAdminSave}
+          currentApiKey={apiKey}
+          currentModel={selectedModel}
+        />
+      )}
     </div>
   );
 };
