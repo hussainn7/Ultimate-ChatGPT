@@ -1,95 +1,136 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Github, Shield, Zap, Globe, MessageCircle } from 'lucide-react';
 
 const About = () => {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center">
+      <header className="border-b border-border">
+        <div className="max-w-4xl mx-auto px-4 py-4">
           <Link 
             to="/" 
-            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ArrowLeft size={20} />
-            Back to Chat
+            <ArrowLeft size={16} />
+            Вернуться к чату
           </Link>
         </div>
       </header>
 
-      {/* Content */}
+      {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-12">
-        <div className="prose prose-neutral dark:prose-invert max-w-none">
-          <div className="text-center mb-12 animate-fade-in">
-            <div className="text-6xl mb-6">🤖</div>
-            <h1 className="text-4xl font-bold mb-4">About AI Chat</h1>
-            <p className="text-xl text-muted-foreground">
-              A modern, real-time AI chat interface built with cutting-edge technology
+        <div className="space-y-12">
+          {/* Hero Section */}
+          <div className="text-center space-y-4">
+            <h1 className="text-4xl font-bold">О ChatGPT</h1>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              Современный ИИ-ассистент с потоковыми ответами в режиме реального времени 
+              и красивыми анимациями
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 mb-12">
-            <div className="bg-card rounded-lg p-6 border border-border animate-fade-in">
-              <h2 className="text-2xl font-semibold mb-4">✨ Features</h2>
-              <ul className="space-y-2 text-muted-foreground">
-                <li>• Real-time streaming responses</li>
-                <li>• Natural typing animations</li>
-                <li>• Responsive design for all devices</li>
-                <li>• Markdown support in messages</li>
-                <li>• Persistent conversation history</li>
-                <li>• WebSocket communication</li>
-              </ul>
+          {/* Features Grid */}
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <h2 className="text-2xl font-semibold">Возможности</h2>
+              
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <Zap className="w-5 h-5 text-primary mt-1" />
+                  <div>
+                    <h3 className="font-medium">Потоковые ответы в реальном времени</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Ответы ИИ появляются символ за символом, имитируя естественную беседу
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <Globe className="w-5 h-5 text-primary mt-1" />
+                  <div>
+                    <h3 className="font-medium">Многоязычная поддержка</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Поддержка множества языков для глобальной аудитории
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <MessageCircle className="w-5 h-5 text-primary mt-1" />
+                  <div>
+                    <h3 className="font-medium">Интуитивный интерфейс</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Чистый, современный дизайн, вдохновленный лучшими практиками UX
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <Shield className="w-5 h-5 text-primary mt-1" />
+                  <div>
+                    <h3 className="font-medium">Безопасность и приватность</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Защита данных пользователей с современными стандартами безопасности
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-card rounded-lg p-6 border border-border animate-fade-in">
-              <h2 className="text-2xl font-semibold mb-4">🛠️ Technology</h2>
-              <ul className="space-y-2 text-muted-foreground">
-                <li>• React 18+ with TypeScript</li>
-                <li>• TailwindCSS for styling</li>
-                <li>• WebSocket for real-time communication</li>
-                <li>• Framer Motion animations</li>
-                <li>• FastAPI backend integration</li>
-                <li>• Modern SSR with Next.js compatibility</li>
-              </ul>
+            <div className="space-y-6">
+              <h2 className="text-2xl font-semibold">Технические детали</h2>
+              
+              <div className="bg-muted rounded-lg p-6 space-y-4">
+                <div>
+                  <h3 className="font-medium mb-2">Фронтенд</h3>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• React 18+ с TypeScript</li>
+                    <li>• Vite для быстрой разработки</li>
+                    <li>• Tailwind CSS для стилизации</li>
+                    <li>• shadcn/ui компоненты</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">Связь</h3>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• WebSocket для потоковых ответов</li>
+                    <li>• REST API для дополнительных запросов</li>
+                    <li>• Автоматическое переподключение</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">Особенности</h3>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• Адаптивный дизайн</li>
+                    <li>• Темная/светлая темы</li>
+                    <li>• Плавные анимации</li>
+                    <li>• История чатов</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="bg-card rounded-lg p-8 border border-border text-center animate-fade-in">
-            <h2 className="text-2xl font-semibold mb-4">🚀 Capabilities</h2>
-            <div className="grid sm:grid-cols-3 gap-6 text-muted-foreground">
-              <div>
-                <div className="text-2xl mb-2">🌍</div>
-                <h3 className="font-medium text-foreground">Multilingual</h3>
-                <p className="text-sm">Support for multiple languages and contexts</p>
-              </div>
-              <div>
-                <div className="text-2xl mb-2">⚡</div>
-                <h3 className="font-medium text-foreground">Real-time</h3>
-                <p className="text-sm">Instant responses with streaming technology</p>
-              </div>
-              <div>
-                <div className="text-2xl mb-2">🎯</div>
-                <h3 className="font-medium text-foreground">Accurate</h3>
-                <p className="text-sm">Powered by advanced AI models</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-12 space-y-4 animate-fade-in">
-            <p className="text-muted-foreground">
-              Built with ❤️ using modern web technologies
-            </p>
-            <div className="flex justify-center gap-6 text-sm">
-              <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                GitHub
+          {/* Links Section */}
+          <div className="border-t border-border pt-8">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <a
+                href="https://github.com"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
+              >
+                <Github size={16} />
+                Посмотреть на GitHub
               </a>
-              <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                Privacy Policy
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                Terms of Service
+              <a
+                href="#"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
+              >
+                <Shield size={16} />
+                Политика конфиденциальности
               </a>
             </div>
           </div>

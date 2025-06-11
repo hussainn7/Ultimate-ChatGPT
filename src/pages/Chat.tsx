@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { Menu, Sun, Moon, Plus, MessageSquare } from 'lucide-react';
 import ChatMessage from '../components/ChatMessage';
 import MessageInput from '../components/MessageInput';
 import TypingIndicator from '../components/TypingIndicator';
@@ -10,12 +11,18 @@ import { Message } from '../types/chat';
 const Chat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [chatHistory, setChatHistory] = useState<{ id: string; title: string; date: string }[]>([
+    { id: '1', title: 'Вопрос о программировании', date: 'Сегодня' },
+    { id: '2', title: 'Помощь с дизайном', date: 'Вчера' },
+    { id: '3', title: 'Обсуждение проекта', date: '2 дня назад' },
+  ]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { sendMessage, isConnected } = useWebSocket({
     onMessage: (data) => {
       if (data.type === 'start') {
         setIsTyping(true);
-        // Add new AI message
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           content: '',
@@ -23,7 +30,6 @@ const Chat = () => {
           timestamp: new Date()
         }]);
       } else if (data.type === 'chunk') {
-        // Update the last message with new content
         setMessages(prev => {
           const newMessages = [...prev];
           const lastMessage = newMessages[newMessages.length - 1];
@@ -38,6 +44,14 @@ const Chat = () => {
     }
   });
 
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -47,7 +61,6 @@ const Chat = () => {
   }, [messages]);
 
   const handleSendMessage = (content: string) => {
-    // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
@@ -57,11 +70,9 @@ const Chat = () => {
     
     setMessages(prev => [...prev, userMessage]);
     
-    // Send to WebSocket
     if (isConnected) {
       sendMessage({ message: content });
     } else {
-      // Fallback simulation if WebSocket is not connected
       simulateAIResponse(content);
     }
   };
@@ -69,7 +80,6 @@ const Chat = () => {
   const simulateAIResponse = (userMessage: string) => {
     setIsTyping(true);
     
-    // Add AI message
     const aiMessage: Message = {
       id: (Date.now() + 1).toString(),
       content: '',
@@ -79,13 +89,12 @@ const Chat = () => {
     
     setMessages(prev => [...prev, aiMessage]);
 
-    // Simulate streaming response
     const responses = [
-      "I understand your question about: " + userMessage,
-      "\n\nThis is a simulated AI response that demonstrates the typing effect. ",
-      "In a real implementation, this would be connected to your FastAPI backend via WebSocket. ",
-      "The response streams in character by character to create a natural conversation flow.",
-      "\n\nEach message supports **markdown** formatting and maintains conversation context."
+      "Я понимаю ваш вопрос о: " + userMessage,
+      "\n\nЭто симуляция ответа ИИ, которая демонстрирует эффект печати. ",
+      "В реальной реализации это будет подключено к вашему FastAPI бэкенду через WebSocket. ",
+      "Ответ транслируется символ за символом для создания естественного потока разговора.",
+      "\n\nКаждое сообщение поддерживает **форматирование markdown** и сохраняет контекст беседы."
     ];
 
     let responseIndex = 0;
@@ -103,7 +112,7 @@ const Chat = () => {
             return newMessages;
           });
           charIndex++;
-          setTimeout(typeResponse, 20 + Math.random() * 40); // Variable typing speed
+          setTimeout(typeResponse, 20 + Math.random() * 40);
         } else {
           responseIndex++;
           charIndex = 0;
@@ -117,57 +126,136 @@ const Chat = () => {
     setTimeout(typeResponse, 500);
   };
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">AI Chat</h1>
-            <p className="text-sm text-muted-foreground">
-              Powered by advanced AI • {isConnected ? 'Connected' : 'Simulated mode'}
-            </p>
-          </div>
-          <Link 
-            to="/about" 
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            About
-          </Link>
-        </div>
-      </header>
+  const startNewChat = () => {
+    setMessages([]);
+    setIsSidebarOpen(false);
+  };
 
-      {/* Messages */}
-      <main className="flex-1 overflow-hidden">
-        <div className="max-w-4xl mx-auto h-full flex flex-col">
-          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-            {messages.length === 0 && (
-              <div className="text-center py-12 animate-fade-in">
-                <div className="text-4xl mb-4">💬</div>
-                <h2 className="text-xl font-medium mb-2">Welcome to AI Chat</h2>
-                <p className="text-muted-foreground">
-                  Start a conversation by typing a message below
+  return (
+    <div className="min-h-screen bg-background text-foreground flex">
+      {/* Sidebar */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-80 bg-card border-r border-border transform transition-transform duration-200 ease-in-out ${
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0 lg:static lg:inset-0`}>
+        <div className="flex flex-col h-full">
+          {/* Sidebar Header */}
+          <div className="p-4 border-b border-border">
+            <button
+              onClick={startNewChat}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <Plus size={18} />
+              <span className="font-medium">Новый чат</span>
+            </button>
+          </div>
+
+          {/* Chat History */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">История чатов</h3>
+            <div className="space-y-2">
+              {chatHistory.map((chat) => (
+                <div
+                  key={chat.id}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted cursor-pointer transition-colors group"
+                >
+                  <MessageSquare size={16} className="text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{chat.title}</p>
+                    <p className="text-xs text-muted-foreground">{chat.date}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Sidebar Footer */}
+          <div className="p-4 border-t border-border">
+            <div className="flex items-center justify-between">
+              <Link 
+                to="/about" 
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                О приложении
+              </Link>
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
+              >
+                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Overlay for mobile */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden"
+              >
+                <Menu size={20} />
+              </button>
+              <div>
+                <h1 className="text-lg font-semibold">ChatGPT</h1>
+                <p className="text-sm text-muted-foreground">
+                  {isConnected ? 'Подключено' : 'Режим симуляции'}
                 </p>
               </div>
-            )}
-            
-            {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
-            ))}
-            
-            {isTyping && <TypingIndicator />}
-            <div ref={messagesEndRef} />
+            </div>
           </div>
-          
-          {/* Input */}
-          <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
-            <MessageInput 
-              onSendMessage={handleSendMessage}
-              disabled={isTyping}
-            />
+        </header>
+
+        {/* Messages */}
+        <main className="flex-1 overflow-hidden">
+          <div className="h-full flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-3xl mx-auto px-4 py-6">
+                {messages.length === 0 && (
+                  <div className="text-center py-12 animate-fade-in">
+                    <div className="text-4xl mb-4">💬</div>
+                    <h2 className="text-xl font-medium mb-2">Добро пожаловать в ChatGPT</h2>
+                    <p className="text-muted-foreground">
+                      Начните разговор, написав сообщение ниже
+                    </p>
+                  </div>
+                )}
+                
+                <div className="space-y-6">
+                  {messages.map((message) => (
+                    <ChatMessage key={message.id} message={message} />
+                  ))}
+                  
+                  {isTyping && <TypingIndicator />}
+                </div>
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+            
+            {/* Input */}
+            <div className="border-t border-border bg-background p-4">
+              <div className="max-w-3xl mx-auto">
+                <MessageInput 
+                  onSendMessage={handleSendMessage}
+                  disabled={isTyping}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 };

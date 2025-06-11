@@ -29,50 +29,37 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled = f
     }
   };
 
-  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
     }
   }, [message]);
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-3">
-      <div className="flex-1 relative">
-        <textarea
-          ref={textareaRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type your message..."
-          disabled={disabled}
-          rows={1}
-          className="w-full px-4 py-3 pr-12 bg-background border border-border rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          style={{ maxHeight: '120px' }}
-        />
-        {message.trim() && (
-          <div className="absolute right-2 bottom-2">
-            <button
-              type="submit"
-              disabled={disabled || !message.trim()}
-              className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105"
-            >
-              <Send size={16} />
-            </button>
-          </div>
-        )}
-      </div>
-      {!message.trim() && (
-        <button
-          type="submit"
-          disabled={disabled || !message.trim()}
-          className="p-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-        >
-          <Send size={20} />
-        </button>
-      )}
-    </form>
+    <div className="relative">
+      <form onSubmit={handleSubmit}>
+        <div className="flex items-end gap-2 p-3 bg-background border border-border rounded-xl shadow-sm focus-within:shadow-md transition-shadow">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Отправьте сообщение ChatGPT..."
+            disabled={disabled}
+            rows={1}
+            className="flex-1 resize-none bg-transparent border-0 outline-none placeholder:text-muted-foreground disabled:opacity-50 max-h-[120px]"
+          />
+          <button
+            type="submit"
+            disabled={disabled || !message.trim()}
+            className="p-2 rounded-lg bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex-shrink-0"
+          >
+            <Send size={16} />
+          </button>
+        </div>
+      </form>
+    </div>
   );
 };
 
