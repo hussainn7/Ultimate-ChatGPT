@@ -15,7 +15,7 @@ interface AIConfig {
 }
 
 const Chat = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [aiConfig, setAiConfig] = useState<AIConfig>({
@@ -44,6 +44,41 @@ const Chat = () => {
     
     // Load chat history
     loadChatHistory();
+
+    // Add visibility change handler for mobile persistence
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Save current state when app goes to background
+        if (currentSessionId && messages.length > 0) {
+          localStorage.setItem('currentSession', JSON.stringify({
+            sessionId: currentSessionId,
+            messages: messages
+          }));
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Restore session if exists
+    const savedSession = localStorage.getItem('currentSession');
+    if (savedSession) {
+      try {
+        const { sessionId, messages: savedMessages } = JSON.parse(savedSession);
+        setCurrentSessionId(sessionId);
+        // Load messages into the chat
+        savedMessages.forEach((msg: Message) => {
+          // Add messages to the chat state
+          // Note: You'll need to modify your useAIChat hook to accept initial messages
+        });
+      } catch (e) {
+        console.error('Failed to restore session:', e);
+      }
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Save current session when messages change
@@ -68,12 +103,21 @@ const Chat = () => {
   }, [isDarkMode]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      const isAtBottom = 
+        messagesEndRef.current.parentElement?.parentElement?.scrollHeight === 
+        messagesEndRef.current.parentElement?.parentElement?.scrollTop + 
+        messagesEndRef.current.parentElement?.parentElement?.clientHeight;
+      
+      if (isAtBottom) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages.length]);
 
   const handleSendMessage = async (content: string) => {
     // Create new session if none exists
@@ -89,6 +133,11 @@ const Chat = () => {
     clearMessages();
     setCurrentSessionId(null);
     setIsSidebarOpen(false);
+    // Ensure main content is visible by removing any transform
+    const mainContent = document.querySelector('main');
+    if (mainContent) {
+      mainContent.style.transform = 'none';
+    }
   };
 
   const loadChatSession = (sessionId: string) => {
@@ -137,101 +186,137 @@ const Chat = () => {
     return modelMap[aiConfig.model] || aiConfig.model;
   };
 
+  // Add copy functionality
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // You might want to add a toast notification here
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+      } catch (err) {
+        console.error('Failed to copy text:', err);
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 bg-card border-r border-border transform transition-transform duration-200 ease-in-out ${
-        isSidebarOpen ? 'translate-x-0 w-80 sm:w-80' : '-translate-x-full w-0'
-      } lg:static lg:inset-0 lg:translate-x-0`}>
-        <div className={`flex flex-col h-full ${isSidebarOpen ? 'w-80 sm:w-80' : 'w-0'} lg:w-80 overflow-hidden`}>
-          {/* Sidebar Header */}
-          <div className="p-3 sm:p-4 border-b border-border">
+      <div className={`fixed inset-y-0 left-0 bg-card border-r border-border transform transition-transform duration-200 ease-in-out ${
+        isSidebarOpen ? 'translate-x-0 w-4/5 max-w-xs sm:w-80 z-50' : '-translate-x-full w-0 z-0'
+      }`}>
+        {isSidebarOpen && (
+          <div className="flex flex-col h-full w-full overflow-hidden relative">
+            {/* Close Button - Top right for mobile, center left for desktop */}
             <button
-              onClick={startNewChat}
-              className="w-full flex items-center gap-3 px-3 sm:px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              className="absolute top-4 right-4 sm:left-0 sm:top-1/2 sm:-translate-y-1/2 sm:-translate-x-1/2 sm:right-auto p-3 rounded-full bg-muted text-foreground shadow-lg hover:bg-muted/80 transition-colors focus:outline-none focus:ring-2 focus:ring-primary z-50 border border-border"
+              onClick={() => setIsSidebarOpen(false)}
+              aria-label="Close sidebar"
+              style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
             >
-              <Plus size={18} />
-              <span className="font-medium">New Chat</span>
+              <X size={24} />
             </button>
-          </div>
-
-          {/* Chat History */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Chat History</h3>
-            <div className="space-y-2">
-              {chatHistory.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No chat history yet.<br />Start a conversation to see it here.
-                </p>
-              ) : (
-                chatHistory.map((session) => (
-                  <div
-                    key={session.id}
-                    onClick={() => loadChatSession(session.id)}
-                    className={`flex items-center gap-3 px-3 py-3 sm:py-2 rounded-lg hover:bg-muted cursor-pointer transition-colors group ${
-                      currentSessionId === session.id ? 'bg-muted' : ''
-                    }`}
-                  >
-                    <MessageSquare size={16} className="text-muted-foreground flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{session.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {chatHistoryService.getRelativeDate(session.updatedAt)} • {session.messages.length} messages
-                      </p>
-                    </div>
-                    <button
-                      onClick={(e) => deleteChatSession(session.id, e)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-destructive transition-opacity"
-                      title="Delete chat"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Sidebar Footer */}
-          <div className="p-3 sm:p-4 border-t border-border">
-            <div className="flex items-center justify-between">
-              <Link 
-                to="/about" 
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                About
-              </Link>
+            {/* Sidebar Header */}
+            <div className="p-4 border-b border-border pt-6 sm:pt-8 pl-4 sm:pl-4">
               <button
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 rounded-lg hover:bg-muted transition-colors"
+                onClick={startNewChat}
+                className="w-full flex items-center gap-3 px-4 py-4 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-lg sm:text-base"
               >
-                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                <Plus size={20} />
+                <span className="font-medium">New Chat</span>
               </button>
             </div>
+            {/* Chat History */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-4 pl-4 sm:pl-16">
+              <h3 className="text-base sm:text-sm font-medium text-muted-foreground mb-4 sm:mb-3">Chat History</h3>
+              <div className="space-y-3 sm:space-y-2">
+                {chatHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No chat history yet.<br />Start a conversation to see it here.
+                  </p>
+                ) : (
+                  chatHistory.map((session) => (
+                    <div
+                      key={session.id}
+                      onClick={() => loadChatSession(session.id)}
+                      className={`flex items-center gap-3 px-3 py-3 sm:py-2 rounded-lg hover:bg-muted cursor-pointer transition-colors group ${
+                        currentSessionId === session.id ? 'bg-muted' : ''
+                      }`}
+                    >
+                      <MessageSquare size={16} className="text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{session.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {chatHistoryService.getRelativeDate(session.updatedAt)} • {session.messages.length} messages
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => deleteChatSession(session.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-destructive transition-opacity"
+                        title="Delete chat"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Sidebar Footer */}
+            <div className="p-4 border-t border-border pl-4 sm:p-4 sm:pl-16">
+              <div className="flex items-center justify-between">
+                <Link 
+                  to="/about" 
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  About
+                </Link>
+                <button
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className="p-2 rounded-lg hover:bg-muted transition-colors"
+                >
+                  {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Overlay for mobile */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/60 z-40 sm:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className={`flex-1 flex flex-col relative z-40 transition-all duration-200 ease-in-out ${
+        isSidebarOpen ? 'lg:ml-80' : ''
+      }`}>
         {/* Header */}
         <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30">
           <div className="flex items-center justify-between px-3 sm:px-4 py-3">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-              <button
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="p-2 rounded-lg hover:bg-muted transition-colors flex-shrink-0 lg:hidden"
-              >
-                <Menu size={20} />
-              </button>
+              {/* Navbar Menu Button */}
+              {!isSidebarOpen && (
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="p-2 rounded-lg hover:bg-muted transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-primary"
+                  aria-label="Open sidebar"
+                >
+                  <Menu size={20} />
+                </button>
+              )}
               <div className="min-w-0 flex-1">
                 <h1 className="text-lg font-semibold truncate">AI Chat</h1>
                 <p className="text-xs sm:text-sm text-muted-foreground truncate">
@@ -256,7 +341,7 @@ const Chat = () => {
         {/* Messages */}
         <main className="flex-1 overflow-hidden">
           <div className="h-full flex flex-col">
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" style={{ height: 'calc(100vh - 180px)' }}>
               <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
                 {/* Error Display */}
                 {error && (
@@ -291,6 +376,7 @@ const Chat = () => {
                       <ChatMessage 
                         key={`message-${message.id}`} 
                         message={message} 
+                        onCopy={() => {}}
                       />
                     );
                   })}

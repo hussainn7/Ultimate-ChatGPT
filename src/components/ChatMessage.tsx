@@ -1,13 +1,15 @@
-
 import React from 'react';
 import { Copy, User, Bot } from 'lucide-react';
 import { Message } from '../types/chat';
 
 interface ChatMessageProps {
   message: Message;
+  onCopy?: (text: string) => void;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) => {
+const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onCopy }) => {
+  const [copied, setCopied] = React.useState(false);
+
   const formatContent = (content: string) => {
     return content
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -16,7 +18,46 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) => {
   };
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(message.content);
+    // Try Clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(message.content)
+        .then(() => {
+          setCopied(true);
+          if (onCopy) onCopy(message.content);
+          setTimeout(() => setCopied(false), 1000);
+        })
+        .catch(() => {
+          fallbackCopy();
+        });
+    } else {
+      fallbackCopy();
+    }
+    function fallbackCopy() {
+      const textArea = document.createElement('textarea');
+      textArea.value = message.content;
+      // Avoid scrolling to bottom
+      textArea.style.position = 'fixed';
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.width = '2em';
+      textArea.style.height = '2em';
+      textArea.style.padding = '0';
+      textArea.style.border = 'none';
+      textArea.style.outline = 'none';
+      textArea.style.boxShadow = 'none';
+      textArea.style.background = 'transparent';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        if (onCopy) onCopy(message.content);
+        setTimeout(() => setCopied(false), 1000);
+      } catch (err) {
+        // Optionally show error
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   return (
@@ -45,7 +86,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) => {
             
             {/* Actions */}
             {!message.isUser && message.content && (
-              <div className="flex items-center gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity relative">
                 <button
                   onClick={copyToClipboard}
                   className="p-1.5 rounded hover:bg-muted transition-colors"
@@ -53,6 +94,11 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) => {
                 >
                   <Copy size={14} />
                 </button>
+                {copied && (
+                  <span className="absolute left-full ml-2 px-2 py-1 rounded bg-primary text-primary-foreground text-xs shadow animate-fade-in">
+                    Copied!
+                  </span>
+                )}
               </div>
             )}
           </div>

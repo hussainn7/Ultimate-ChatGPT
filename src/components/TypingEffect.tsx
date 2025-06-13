@@ -1,61 +1,26 @@
-import React, { useState, useEffect } from 'react';
 
-interface TypingEffectProps {
-  text: string;
-  speed?: number;
-  className?: string;
-  onComplete?: () => void;
-}
+import React from 'react';
+import { Bot } from 'lucide-react';
 
-const TypingEffect: React.FC<TypingEffectProps> = ({ 
-  text, 
-  speed = 20, 
-  className = '', 
-  onComplete 
-}) => {
-  const [displayedText, setDisplayedText] = useState('');
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [showCursor, setShowCursor] = useState(true);
-
-  // Cursor blinking effect
-  useEffect(() => {
-    const cursorInterval = setInterval(() => {
-      setShowCursor(prev => !prev);
-    }, 500);
-
-    return () => clearInterval(cursorInterval);
-  }, []);
-
-  // Typing effect
-  useEffect(() => {
-    if (currentIndex < text.length) {
-      const timeout = setTimeout(() => {
-        setDisplayedText(prev => prev + text[currentIndex]);
-        setCurrentIndex(prev => prev + 1);
-      }, speed + Math.random() * 20); // Add some randomness to typing speed
-
-      return () => clearTimeout(timeout);
-    } else if (currentIndex === text.length && onComplete) {
-      onComplete();
-    }
-  }, [currentIndex, text, speed, onComplete]);
-
-  // Reset when text changes
-  useEffect(() => {
-    setDisplayedText('');
-    setCurrentIndex(0);
-  }, [text]);
-
+const TypingIndicator: React.FC = () => {
   return (
-    <span className={className}>
-      {displayedText}
-      {currentIndex < text.length && (
-        <span className={`inline-block w-0.5 h-5 bg-current ml-0.5 ${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity`}>
-          |
-        </span>
-      )}
-    </span>
+    <div className="group animate-fade-in bg-muted/30">
+      <div className="max-w-none mx-auto px-4 py-6">
+        <div className="flex gap-4 items-start">
+          <div className="flex-shrink-0 w-8 h-8 rounded-sm bg-foreground text-background flex items-center justify-center">
+            <Bot size={16} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1 py-2">
+              <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
-export default TypingEffect; 
+export default TypingIndicator;
