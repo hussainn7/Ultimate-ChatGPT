@@ -1,52 +1,130 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, Sun, Moon, Plus, MessageSquare, Settings, X } from 'lucide-react';
+import { Menu, Sun, Moon, Plus, MessageSquare, Settings, X, ChevronLeft } from 'lucide-react';
 import ChatMessage from '../components/ChatMessage';
 import MessageInput from '../components/MessageInput';
-import TypingIndicator from '../components/TypingIndicator';
 import AdminPanel from '../components/AdminPanel';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Message } from '../types/chat';
 
+const modelInfo = (id: string) => {
+    const map: Record<string, { label: string; provider: string }> = {
+      'gpt-3.5-turbo': { label: 'GPT-3.5 Turbo', provider: 'OpenAI' },
+      'gpt-4o-mini': { label: 'GPT-4o Mini', provider: 'OpenAI' },
+      'gpt-4o': { label: 'GPT-4o', provider: 'OpenAI' },
+      'gpt-4-turbo': { label: 'GPT-4 Turbo', provider: 'OpenAI' },
+      'deepseek-chat': { label: 'DeepSeek Chat', provider: 'DeepSeek' },
+      'deepseek-coder': { label: 'DeepSeek Coder', provider: 'DeepSeek' },
+    };
+    return map[id] || { label: id, provider: '' };
+  };
+
 const Chat = () => {
+  // Selected chat id persists
+  const [selectedChatId, setSelectedChatId] = useState<string>(() => sessionStorage.getItem('selectedChatId') || '');
+  type ChatSession = { id: string; title: string; date: string; messages: Message[] };
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-  const [selectedModel, setSelectedModel] = useState('gpt-4o');
-  const [chatHistory, setChatHistory] = useState<{ id: string; title: string; date: string }[]>([
-    { id: '1', title: 'Вопрос о программировании', date: 'Сегодня' },
-    { id: '2', title: 'Помощь с дизайном', date: 'Вчера' },
-    { id: '3', title: 'Обсуждение проекта', date: '2 дня назад' },
-  ]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { sendMessage, isConnected } = useWebSocket({
-    onMessage: (data) => {
-      if (data.type === 'start') {
-        setIsTyping(true);
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          content: '',
-          isUser: false,
-          timestamp: new Date()
-        }]);
-      } else if (data.type === 'chunk') {
-        setMessages(prev => {
-          const newMessages = [...prev];
-          const lastMessage = newMessages[newMessages.length - 1];
-          if (lastMessage && !lastMessage.isUser) {
-            lastMessage.content += data.content;
-          }
-          return newMessages;
-        });
-      } else if (data.type === 'end') {
-        setIsTyping(false);
-      }
-    }
+  const [model, setModel] = useState<string>('gpt-3.5-turbo');
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>(() => {
+    const stored = sessionStorage.getItem('chatHistory');
+    return stored ? JSON.parse(stored) : [];
   });
+    // Persist chat history changes
+  useEffect(() => {
+    sessionStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  useEffect(() => {
+    sessionStorage.setItem('selectedChatId', selectedChatId);
+  }, [selectedChatId]);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleWebSocketMessage = useCallback((data: any) => {
+    console.log('Received WebSocket message:', data);
+    if (data.type === 'start') {
+      setIsStreaming(true);
+      setMessages(prev => [...prev, { 
+        id: Date.now(), 
+        role: 'assistant', 
+        content: '',
+        timestamp: new Date()
+      }]);
+    } else if (data.type === 'chunk') {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant') {
+          lastMessage.content += data.content;
+        }
+        return newMessages;
+      });
+    } else if (data.type === 'end') {
+      setIsStreaming(false);
+    } else if (data.type === 'error') {
+      setIsStreaming(false);
+      setMessages(prev => [...prev, { 
+        id: Date.now(), 
+        role: 'assistant', 
+        content: `Error: ${data.error}`,
+        timestamp: new Date()
+      }]);
+    }
+  }, []);
+
+  const handleWebSocketError = useCallback((error: any) => {
+    console.error('WebSocket error:', error);
+    setIsStreaming(false);
+    setMessages(prev => [...prev, { 
+      id: Date.now(), 
+      role: 'assistant', 
+      content: 'Connection error. Please try again.',
+      timestamp: new Date()
+    }]);
+  }, []);
+
+  const { sendMessage, isConnected } = useWebSocket(handleWebSocketMessage, handleWebSocketError);
+
+  const handleSendMessage = useCallback(async (message: string) => {
+    console.log('Sending message:', message, 'Connected:', isConnected);
+    if (!message.trim()) return;
+
+    // Add user message immediately
+    const userMessage = {
+      id: Date.now(),
+      role: 'user' as const,
+      content: message,
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    if (!isConnected) {
+      console.error('WebSocket not connected');
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        role: 'assistant',
+        content: 'Not connected to server. Please try again.',
+        timestamp: new Date()
+      }]);
+      return;
+    }
+
+    try {
+      sendMessage(message, model);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        role: 'assistant',
+        content: 'Error sending message. Please try again.',
+        timestamp: new Date()
+      }]);
+    }
+  }, [model, sendMessage, isConnected]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -64,34 +142,21 @@ const Chat = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = (content: string) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content,
-      isUser: true,
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-    
-    if (isConnected) {
-      sendMessage({ message: content, apiKey, model: selectedModel });
-    } else {
-      simulateAIResponse(content);
-    }
-  };
-
   const simulateAIResponse = (userMessage: string) => {
-    setIsTyping(true);
+    setIsStreaming(true);
     
     const aiMessage: Message = {
-      id: (Date.now() + 1).toString(),
+      id: Date.now() + 1,
       content: '',
-      isUser: false,
+      role: 'assistant',
       timestamp: new Date()
     };
     
-    setMessages(prev => [...prev, aiMessage]);
+    setMessages(prev => {
+      const updated = [...prev, aiMessage];
+      setChatHistory(chats => chats.map(c => c.id===selectedChatId? { ...c, messages: updated }: c));
+      return updated;
+    });
 
     const responses = [
       "Я понимаю ваш вопрос о: " + userMessage,
@@ -110,10 +175,11 @@ const Chat = () => {
           setMessages(prev => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && !lastMessage.isUser) {
+            if (lastMessage && lastMessage.role === 'assistant') {
               lastMessage.content += responses[responseIndex][charIndex];
             }
-            return newMessages;
+            setChatHistory(chats => chats.map(c => c.id===selectedChatId? { ...c, messages: newMessages }: c));
+      return newMessages;
           });
           charIndex++;
           setTimeout(typeResponse, 20 + Math.random() * 40);
@@ -123,7 +189,7 @@ const Chat = () => {
           setTimeout(typeResponse, 100);
         }
       } else {
-        setIsTyping(false);
+        setIsStreaming(false);
       }
     };
 
@@ -131,15 +197,27 @@ const Chat = () => {
   };
 
   const startNewChat = () => {
+    const newChat: ChatSession = { id: Date.now().toString(), title: `Чат ${chatHistory.length + 1}`, date: new Date().toLocaleDateString(), messages: [] };
+    setChatHistory(prev => [newChat, ...prev]);
+    setSelectedChatId(newChat.id);
     setMessages([]);
-    setIsSidebarOpen(false);
   };
 
-  const handleAdminSave = (newApiKey: string, newModel: string) => {
-    setApiKey(newApiKey);
-    setSelectedModel(newModel);
+  const handleAdminSave = (newModel: string) => {
+    setModel(newModel);
     setIsAdminPanelOpen(false);
   };
+
+  const isGuest = localStorage.getItem('guest') === 'true';
+
+  // Group sessions by date for sidebar rendering
+  const groupedHistory = React.useMemo(() => {
+    if (isGuest) return {}; // guests don't persist history
+    return chatHistory.reduce<Record<string, ChatSession[]>>((acc, chat) => {
+      (acc[chat.date] ||= []).push(chat);
+      return acc;
+    }, {});
+  }, [chatHistory, isGuest]);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
@@ -149,30 +227,46 @@ const Chat = () => {
       } lg:static lg:inset-0`}>
         <div className={`flex flex-col h-full ${isSidebarOpen ? 'w-80' : 'w-0'} overflow-hidden`}>
           {/* Sidebar Header */}
-          <div className="p-4 border-b border-border">
-            <button
-              onClick={startNewChat}
-              className="w-full flex items-center gap-3 px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              <Plus size={18} />
-              <span className="font-medium">Новый чат</span>
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            {isGuest ? (
+              <div className="w-full p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+                Войдите, чтобы сохранять историю чатов
+              </div>
+            ) : (
+              <button
+                onClick={startNewChat}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                <Plus size={18} />
+                <span className="font-medium">Новый чат</span>
+              </button>
+            )}
+            {/* Close sidebar on mobile */}
+            <button onClick={() => setIsSidebarOpen(false)} className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden" title="Скрыть меню">
+              <ChevronLeft size={18} />
             </button>
           </div>
 
           {/* Chat History */}
           <div className="flex-1 overflow-y-auto p-4">
             <h3 className="text-sm font-medium text-muted-foreground mb-3">История чатов</h3>
-            <div className="space-y-2">
-              {chatHistory.map((chat) => (
-                <div
-                  key={chat.id}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted cursor-pointer transition-colors group"
-                >
-                  <MessageSquare size={16} className="text-muted-foreground" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{chat.title}</p>
-                    <p className="text-xs text-muted-foreground">{chat.date}</p>
-                  </div>
+            <div className="space-y-4">
+              {Object.entries(groupedHistory).map(([date, chats]) => (
+                <div key={date} className="space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground/70 px-1">{date}</p>
+                  {chats.map(chat => (
+                    <div
+                      key={chat.id}
+                      onClick={() => { setSelectedChatId(chat.id); setMessages(chat.messages); }}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors group ${chat.id===selectedChatId?'bg-muted':'hover:bg-muted'}`}
+                    >
+                      <MessageSquare size={16} className="text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{chat.title}</p>
+                        <p className="text-xs text-muted-foreground">{chat.date}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -219,9 +313,9 @@ const Chat = () => {
                 <Menu size={20} />
               </button>
               <div>
-                <h1 className="text-lg font-semibold">ChatGPT</h1>
+                <h1 className="text-lg font-semibold">{chatHistory.find(c=>c.id===selectedChatId)?.title || 'AI Chat'}</h1>
                 <p className="text-sm text-muted-foreground">
-                  {isConnected ? 'Подключено' : 'Режим симуляции'}
+                  {`${modelInfo(model).label} • ${modelInfo(model).provider}`}
                 </p>
               </div>
             </div>
@@ -244,8 +338,8 @@ const Chat = () => {
               <div className="max-w-3xl mx-auto px-4 py-6">
                 {messages.length === 0 && (
                   <div className="text-center py-12 animate-fade-in">
-                    <div className="text-4xl mb-4">💬</div>
-                    <h2 className="text-xl font-medium mb-2">Добро пожаловать в ChatGPT</h2>
+                    <div className="text-4xl mb-4">🤖</div>
+                    <h2 className="text-xl font-medium mb-2">Добро пожаловать в ИИ помощника</h2>
                     <p className="text-muted-foreground">
                       Начните разговор, написав сообщение ниже
                     </p>
@@ -256,8 +350,6 @@ const Chat = () => {
                   {messages.map((message) => (
                     <ChatMessage key={message.id} message={message} />
                   ))}
-                  
-                  {isTyping && <TypingIndicator />}
                 </div>
                 <div ref={messagesEndRef} />
               </div>
@@ -268,7 +360,7 @@ const Chat = () => {
               <div className="max-w-3xl mx-auto">
                 <MessageInput 
                   onSendMessage={handleSendMessage}
-                  disabled={isTyping}
+                  disabled={isStreaming}
                 />
               </div>
             </div>
@@ -282,8 +374,7 @@ const Chat = () => {
           isOpen={isAdminPanelOpen}
           onClose={() => setIsAdminPanelOpen(false)}
           onSave={handleAdminSave}
-          currentApiKey={apiKey}
-          currentModel={selectedModel}
+          currentModel={model}
         />
       )}
     </div>

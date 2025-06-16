@@ -1,12 +1,11 @@
-
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface AdminPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (apiKey: string, model: string) => void;
-  currentApiKey: string;
+  onSave: (model: string) => void;
   currentModel: string;
 }
 
@@ -14,23 +13,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   isOpen,
   onClose,
   onSave,
-  currentApiKey,
   currentModel
 }) => {
-  const [apiKey, setApiKey] = useState(currentApiKey);
   const [selectedModel, setSelectedModel] = useState(currentModel);
+  const navigate = useNavigate();
 
-  const models = [
-    { id: 'gpt-4o', name: 'GPT-4o' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
-    { id: 'claude-3-opus', name: 'Claude 3 Opus' },
-    { id: 'claude-3-sonnet', name: 'Claude 3 Sonnet' },
-    { id: 'claude-3-haiku', name: 'Claude 3 Haiku' },
+  const modelGroups = [
+    {
+      label: 'OpenAI Models',
+      options: [
+        { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo (Cheap)' },
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Cheap)' },
+        { id: 'gpt-4o', name: 'GPT-4o' },
+        { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+      ]
+    },
+    {
+      label: 'DeepSeek Models',
+      options: [
+        { id: 'deepseek-chat', name: 'DeepSeek Chat (Cheap)' },
+        { id: 'deepseek-coder', name: 'DeepSeek Coder (Cheap)' },
+      ]
+    }
   ];
 
   const handleSave = () => {
-    onSave(apiKey, selectedModel);
+    onSave(selectedModel);
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('guest');
+    navigate('/auth');
   };
 
   if (!isOpen) return null;
@@ -51,60 +65,50 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* API Key */}
-          <div className="space-y-2">
-            <label htmlFor="apiKey" className="text-sm font-medium">
-              API Ключ
-            </label>
-            <input
-              id="apiKey"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Введите ваш API ключ"
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <p className="text-xs text-muted-foreground">
-              Ваш API ключ будет использован для подключения к AI сервису
-            </p>
-          </div>
-
           {/* Model Selection */}
           <div className="space-y-2">
-            <label htmlFor="model" className="text-sm font-medium">
-              Модель ИИ
-            </label>
+            <label htmlFor="model" className="text-sm font-medium">Выберите AI модель</label>
             <select
               id="model"
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
+              {modelGroups.map(group => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map(opt => (
+                    <option key={opt.id} value={opt.id}>{opt.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Выберите модель ИИ для генерации ответов
+              Самая дешёвая модель выбрана по умолчанию. Сервис использует самую дешёвую модель по умолчанию.
             </p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-border">
+        <div className="flex items-center justify-between gap-3 p-6 border-t border-border">
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Сохранить
+            </button>
+          </div>
           <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
+            onClick={handleSignOut}
+            className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
           >
-            Отмена
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            Сохранить
+            Выйти
           </button>
         </div>
       </div>

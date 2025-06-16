@@ -1,8 +1,9 @@
-
 import { useEffect, useRef, useState } from 'react';
 
 interface WebSocketMessage {
   message: string;
+  provider?: string;
+  model?: string;
 }
 
 interface WebSocketResponse {

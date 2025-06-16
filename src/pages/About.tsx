@@ -86,7 +86,7 @@ const About = () => {
                 <div>
                   <h3 className="font-medium mb-2">Фронтенд</h3>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• React 18+ с TypeScript</li>
+                    <li>• React с TypeScript</li>
                     <li>• Vite для быстрой разработки</li>
                     <li>• Tailwind CSS для стилизации</li>
                     <li>• shadcn/ui компоненты</li>
