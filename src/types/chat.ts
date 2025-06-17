@@ -1,15 +1,9 @@
-export interface Message {
-  id: number;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
 
-export interface Chat {
+export interface Message {
   id: string;
-  title: string;
-  messages: Message[];
-  date: string;
+  content: string;
+  isUser: boolean;
+  timestamp: Date;
 }
 
 export interface ChatState {

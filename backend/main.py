@@ -1,140 +1,70 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 import json
 import os
 import asyncio
-from typing import AsyncGenerator, Optional
-from datetime import timedelta
-
-from .database import get_db, User
-from .auth import (
-    verify_password, get_password_hash, create_access_token,
-    ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user, SECRET_KEY, ALGORITHM
-)
-from jose import jwt, JWTError
+from typing import AsyncGenerator, Optional, List
+from datetime import datetime
 
 try:
     import openai
 except ImportError:
     openai = None  # Will raise later if missing
 
+from .auth import router as auth_router, get_current_user
+from .database import engine, get_db, AsyncSessionLocal
+from .models import Base, ChatMessage, User, ChatSession
+from .schemas import ChatSessionCreate, ChatSessionOut, ChatMessageOut
+
 app = FastAPI(title="EchoTalkFlow Backend", version="0.1.0")
 
 # Allow front-end dev server (vite) during local dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production
+    allow_origins=["http://localhost:5173", "http://localhost:8080", "http://127.0.0.1:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# # Initialize database tables
+# @app.on_event("startup")
+# async def init_db():
+#     async with engine.begin() as conn:
+#         # Drop all tables and recreate them to handle schema changes
+#         await conn.run_sync(Base.metadata.drop_all)
+#         await conn.run_sync(Base.metadata.create_all)
+#     print("Database tables recreated successfully!")
+
 # --- API KEYS --------------------------------------------------------------
+# Static backend-side keys.  DO NOT commit real keys – put them in env vars.
 OPENAI_API_KEY = "THE_KEY"
 DEEPSEEK_API_KEY = "THE_KEY"
-if not OPENAI_API_KEY:
-    print("[WARN] OPENAI_API_KEY env var not set – OpenAI requests will fail.")
-if not DEEPSEEK_API_KEY:
-    print("[WARN] DEEPSEEK_API_KEY env var not set – DeepSeek requests will fail.")
 
 # Cheapest default models
 CHEAP_CHATGPT_MODEL = "gpt-3.5-turbo"
 CHEAP_DEEPSEEK_MODEL = "deepseek-chat"
 
-# Pydantic models for request/response
-class UserCreate(BaseModel):
-    email: str
-    username: str
-    password: str
-
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    username: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-# Authentication endpoints
-@app.post("/register", response_model=UserResponse)
-def register(user: UserCreate, db: Session = Depends(get_db)):
-    # Check if user exists
-    db_user = db.query(User).filter(User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    db_user = db.query(User).filter(User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already taken")
-    
-    # Create new user
-    hashed_password = get_password_hash(user.password)
-    db_user = User(
-        email=user.email,
-        username=user.username,
-        hashed_password=hashed_password
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
-
-@app.post("/token", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@app.get("/users/me", response_model=UserResponse)
-def read_users_me(current_user: User = Depends(get_current_user)):
-    return current_user
-
 # --------------------------------------------------------------------------
-def get_openai_client(model: str):
-    """Get the appropriate OpenAI client based on the model."""
+async def stream_openai_response(message: str, model: str | None = None) -> AsyncGenerator[str, None]:
+    """Stream response from OpenAI ChatCompletion."""
+    if openai is None:
+        raise RuntimeError("openai python package is not installed.")
+
     client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
-    return client
+    stream = await client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": message}],
+        stream=True,
+    )
+    async for chunk in stream:
+        delta = chunk.choices[0].delta.content or ""
+        if delta:
+            yield delta
 
-async def stream_openai_response(messages: list[dict], model: str):
-    """Stream the response from OpenAI API"""
-    try:
-        # Get the appropriate client based on the model
-        client = get_openai_client(model)
-        
-
-        
-        # Stream the response
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-            temperature=0.7,
-            max_tokens=1000
-        )
-        
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
-                
-    except Exception as e:
-        print(f"Error in stream_openai_response: {str(e)}")
-        yield f"Error: {str(e)}"
-
-async def stream_deepseek_response(message: str, model: str | None = None, username: Optional[str] = None) -> AsyncGenerator[str, None]:
+async def stream_deepseek_response(message: str, model: str | None = None) -> AsyncGenerator[str, None]:
     """Stream response from DeepSeek using OpenAI-compatible API base url."""
     if openai is None:
         raise RuntimeError("openai python package is not installed.")
@@ -145,11 +75,7 @@ async def stream_deepseek_response(message: str, model: str | None = None, usern
     )
     stream = await client.chat.completions.create(
         model=model,
-                    messages=[
-                {"role": "system", "content": (f"You are a helpful AI assistant. Respond in the same language as the user's message. "
-                                                f"The user's name is {username}." if username else "You are a helpful AI assistant. Respond in the same language as the user's message.")},
-                {"role": "user", "content": message},
-            ],
+        messages=[{"role": "user", "content": message}],
         stream=True,
     )
     async for chunk in stream:
@@ -158,105 +84,189 @@ async def stream_deepseek_response(message: str, model: str | None = None, usern
             yield delta
 
 # --------------------------------------------------------------------------
+@app.post("/chat/sessions", response_model=ChatSessionOut)
+async def create_chat_session(
+    session: ChatSessionCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    db_session = ChatSession(user_id=user.id, title=session.title)
+    db.add(db_session)
+    await db.commit()
+    await db.refresh(db_session)
+    return db_session
+
+@app.get("/chat/sessions", response_model=List[ChatSessionOut])
+async def get_chat_sessions(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.user_id == user.id)
+        .order_by(ChatSession.created_at.desc())
+    )
+    return result.scalars().all()
+
+@app.get("/chat/sessions/{session_id}/messages", response_model=List[ChatMessageOut])
+async def get_session_messages(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(ChatMessage)
+        .where(
+            ChatMessage.chat_session_id == session_id,
+            ChatMessage.user_id == user.id
+        )
+        .order_by(ChatMessage.created_at)
+    )
+    return result.scalars().all()
+
 @app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket, token: str = Query(None)):
-    print("New WebSocket connection request")
-    
-    # Accept the connection first
+async def websocket_endpoint(ws: WebSocket):
+    print("New WebSocket connection established")
     await ws.accept()
-    print("WebSocket connection accepted")
-    # Per-connection chat history to provide context on each request
-    chat_history: list[dict] = []
-    
     try:
-        # If token is provided, verify it
-        if token:
-            try:
-                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-                username: str = payload.get("sub")
-                if username is None:
-                    await ws.close(code=status.WS_1008_POLICY_VIOLATION)
-                    return
-                
-                # Get user from database
-                db = next(get_db())
-                # Accept either username or email from token 'sub'
-                if "@" in username:
-                    user = db.query(User).filter(User.email == username).first()
-                else:
-                    user = db.query(User).filter(User.username == username).first()
-                if not user:
-                    print(f"Token valid but user not found in DB: {username}. Treating as guest.")
-                    username = None  # fall back to guest
-                else:
-                    print(f"Authenticated user connected: {username}")
-            except JWTError:
-                await ws.close(code=status.WS_1008_POLICY_VIOLATION)
-                return
-        else:
-            print("Guest user connected")
-    
         while True:
+            raw_data = await ws.receive_text()
+            print(f"Received WebSocket data: {raw_data}")
+            data = json.loads(raw_data)
+            message = data.get("message", "")
+            model = data.get("model", "")
+            token = data.get("token", "")
+            chat_session_id = data.get("chatSessionId")  # Get chat session ID from request
+            
+            print(f"Parsed message: {message}, model: {model}, token present: {'yes' if token else 'no'}, chat_session_id: {chat_session_id}")
+
+            if not chat_session_id:
+                await ws.send_json({"type": "error", "error": "No chat session ID provided"})
+                continue
+
+            # Get user from token
             try:
-                data = await ws.receive_text()
-                print(f"Received message: {data}")
+                if not token:
+                    raise HTTPException(status_code=401, detail="No token provided")
                 
-                try:
-                    raw_data = json.loads(data)
-                    message = raw_data.get("message", "")
-                    model = raw_data.get("model", "gpt-3.5-turbo")
-                    print(f"Processing message: {message} with model: {model}")
+                # Remove 'Bearer ' prefix if present
+                if token.startswith('Bearer '):
+                    token = token[7:]
+                
+                async with AsyncSessionLocal() as db:
+                    try:
+                        user = await get_current_user(token, db)
+                        print(f"Authenticated user: {user.username if user else 'None'}")
+                        
+                        # Verify chat session belongs to user
+                        chat_session = (await db.execute(
+                            select(ChatSession)
+                            .where(
+                                ChatSession.id == chat_session_id,
+                                ChatSession.user_id == user.id
+                            )
+                        )).scalar_one_or_none()
+                        
+                        if not chat_session:
+                            raise HTTPException(status_code=404, detail="Chat session not found")
+                            
+                    except Exception as e:
+                        print(f"Error during user/session lookup: {str(e)}")
+                        raise HTTPException(status_code=401, detail=str(e))
+            except HTTPException as e:
+                print(f"Authentication error: {e.status_code}: {e.detail}")
+                user = None
+                chat_session = None
 
-                    # Tell client stream is starting
-                    await ws.send_json({"type": "start"})
-                    print("Sent start message")
+            # Tell client stream is starting
+            await ws.send_json({"type": "start"})
 
-                    # Build full message array with prior context
-                    messages_payload = ([
-                        {"role": "system", "content": "Here is the context of the conversation so far. Use it to answer helpfully."}
-                    ] + chat_history + [
-                        {"role": "user", "content": message}
-                    ])
-
-                    # Stream the response
-                    streamer = stream_openai_response(messages_payload, model)
-                    assistant_response = ""
-                    async for chunk in streamer:
-                        assistant_response += chunk
-                        if ws.client_state.CONNECTED:
-                            await ws.send_json({"type": "chunk", "content": chunk})
+            # Compose full prompt with history for authenticated users
+            if user and chat_session:
+                async with AsyncSessionLocal() as db:
+                    print(f"Saving user message to database for user {user.username}")
+                    try:
+                        # Save user message
+                        db.add(ChatMessage(
+                            user_id=user.id,
+                            chat_session_id=chat_session.id,
+                            role="user",
+                            content=message
+                        ))
+                        await db.commit()
+                        print("Successfully saved user message to database")
+                    except Exception as e:
+                        print(f"Error saving user message to database: {str(e)}")
+                        await db.rollback()
+                        
+                    # Get last 10 messages from this chat session
+                    prev_msgs = (await db.execute(
+                        select(ChatMessage)
+                        .where(
+                            ChatMessage.chat_session_id == chat_session.id,
+                            ChatMessage.user_id == user.id
+                        )
+                        .order_by(ChatMessage.created_at.desc())
+                        .limit(10)
+                    )).scalars().all()[::-1]  # oldest first
                     
-                    # Tell the client the stream ended
-                    if ws.client_state.CONNECTED:
-                        await ws.send_json({"type": "end"})
+                    history_text = "\n".join(f"{m.role}: {m.content}" for m in prev_msgs)
+                    prompt = f"{history_text}\nuser: {message}" if history_text else message
+                    print(f"Generated prompt with history: {prompt}")
+            else:
+                print("No authenticated user or chat session, using raw message as prompt")
+                prompt = message
 
-                    # Update history
-                    chat_history.extend([
-                        {"role": "user", "content": message},
-                        {"role": "assistant", "content": assistant_response},
-                    ])
+            assistant_chunks: list[str] = []
 
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error: {str(e)}")
-                    if ws.client_state.CONNECTED:
-                        await ws.send_json({"type": "error", "error": "Invalid message format"})
-                except Exception as e:
-                    print(f"Error processing message: {str(e)}")
-                    if ws.client_state.CONNECTED:
-                        await ws.send_json({"type": "error", "error": str(e)})
+            if model.startswith("deepseek"):
+                streamer = stream_deepseek_response(prompt, model)
+            else:
+                streamer = stream_openai_response(prompt, model)
 
-            except WebSocketDisconnect:
-                print("WebSocket disconnected")
-                break
-            except Exception as e:
-                print(f"Unexpected error: {str(e)}")
-                if ws.client_state.CONNECTED:
-                    await ws.send_json({"type": "error", "error": str(e)})
-                break
+            try:
+                async for chunk in streamer:
+                    await ws.send_json({"type": "chunk", "content": chunk})
+                    assistant_chunks.append(chunk)
+                await ws.send_json({"type": "end"})
 
-    except Exception as e:
-        print(f"Fatal error in WebSocket connection: {str(e)}")
-        try:
-            await ws.close(code=status.WS_1011_INTERNAL_ERROR)
-        except:
-            pass
+                # Save assistant response for logged-in users
+                if user and chat_session:
+                    async with AsyncSessionLocal() as db:
+                        print(f"Saving assistant response to database for user {user.username}")
+                        try:
+                            db.add(ChatMessage(
+                                user_id=user.id,
+                                chat_session_id=chat_session.id,
+                                role="assistant",
+                                content="".join(assistant_chunks)
+                            ))
+                            await db.commit()
+                            print("Successfully saved assistant response to database")
+                        except Exception as e:
+                            print(f"Error saving assistant response to database: {str(e)}")
+                            await db.rollback()
+
+            except Exception as exc:
+                print(f"Error during streaming: {str(exc)}")
+                await ws.send_json({"type": "error", "error": str(exc)})
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
+
+# --------------------------------------------------------------------------
+# Chat history endpoint
+# --------------------------------------------------------------------------
+@app.get("/chat/history")
+async def get_chat_history(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.user_id == user.id)
+        .order_by(ChatMessage.created_at)
+    )
+    return result.scalars().all()
+
+# --------------------------------------------------------------------------
+# Register auth routes & initialize database
+# --------------------------------------------------------------------------
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
+

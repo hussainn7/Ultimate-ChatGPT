@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, Sun, Moon, Plus, MessageSquare, Settings, X, ChevronLeft } from 'lucide-react';
@@ -19,142 +20,44 @@ const modelInfo = (id: string) => {
     return map[id] || { label: id, provider: '' };
   };
 
-interface ChatSession {
-  id: number;
-  title: string;
-  created_at: string;
-}
-
 const Chat = () => {
-  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  // Selected chat id persists
+  const [selectedChatId, setSelectedChatId] = useState<string>(() => sessionStorage.getItem('selectedChatId') || '');
+  type ChatSession = { id: string; title: string; date: string; messages: Message[] };
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [model, setModel] = useState<string>('gpt-3.5-turbo');
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
-
-  // Fetch chat sessions when component mounts
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>(() => {
+    const stored = sessionStorage.getItem('chatHistory');
+    return stored ? JSON.parse(stored) : [];
+  });
+    // Persist chat history changes
   useEffect(() => {
-    const token = localStorage.getItem('et_token');
-    if (token) {
-      // Fetch chat sessions
-      fetch('http://localhost:8000/chat/sessions', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      .then(response => {
-        if (!response.ok) {
-          if (response.status === 401) {
-            console.error('Authentication failed. Token may be invalid or expired.');
-            localStorage.removeItem('et_token');
-          }
-          throw new Error('Failed to fetch chat sessions');
-        }
-        return response.json();
-      })
-      .then(sessions => {
-        setChatSessions(sessions);
-        if (sessions.length > 0) {
-          setSelectedChatId(sessions[0].id);
-          // Fetch messages for the first session
-          return fetch(`http://localhost:8000/chat/sessions/${sessions[0].id}/messages`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-        }
-      })
-      .then(response => {
-        if (response && response.ok) {
-          return response.json();
-        }
-      })
-      .then(messages => {
-        if (messages) {
-          setMessages(messages.map((msg: any) => ({
-            id: msg.id.toString(),
-            content: msg.content,
-            isUser: msg.role === 'user',
-            timestamp: new Date(msg.created_at)
-          })));
-        }
-      })
-      .catch(error => {
-        console.error('Error fetching chat data:', error);
-      });
-    }
-  }, []);
+    sessionStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+  }, [chatHistory]);
 
-  // Load messages when selecting a different chat session
   useEffect(() => {
-    if (selectedChatId) {
-      const token = localStorage.getItem('et_token');
-      fetch(`http://localhost:8000/chat/sessions/${selectedChatId}/messages`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      .then(response => {
-        if (!response.ok) throw new Error('Failed to fetch messages');
-        return response.json();
-      })
-      .then(messages => {
-        setMessages(messages.map((msg: any) => ({
-          id: msg.id.toString(),
-          content: msg.content,
-          isUser: msg.role === 'user',
-          timestamp: new Date(msg.created_at)
-        })));
-      })
-      .catch(error => {
-        console.error('Error fetching messages:', error);
-      });
-    }
+    sessionStorage.setItem('selectedChatId', selectedChatId);
   }, [selectedChatId]);
 
-  const startNewChat = async () => {
-    const token = localStorage.getItem('et_token');
-    if (!token) return;
-
-    try {
-      const response = await fetch('http://localhost:8000/chat/sessions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title: `Chat ${chatSessions.length + 1}`
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to create chat session');
-      
-      const newSession = await response.json();
-      setChatSessions(prev => [newSession, ...prev]);
-      setSelectedChatId(newSession.id);
-      setMessages([]);
-    } catch (error) {
-      console.error('Error creating new chat:', error);
-    }
-  };
-
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { sendMessage, isConnected } = useWebSocket({
     onMessage: (data) => {
       if (data.type === 'start') {
         setIsStreaming(true);
-        setMessages(prev => [...prev, {
+        setMessages(prev => {
+        const updated = [...prev, {
           id: Date.now().toString(),
           content: '',
           isUser: false,
           timestamp: new Date()
-        }]);
+        }];
+        setChatHistory(chats => chats.map(c => c.id===selectedChatId? { ...c, messages: updated }: c));
+        return updated;
+        });
       } else if (data.type === 'chunk') {
         setMessages(prev => {
           const newMessages = [...prev];
@@ -162,39 +65,14 @@ const Chat = () => {
           if (lastMessage && !lastMessage.isUser) {
             lastMessage.content += data.content;
           }
-          return newMessages;
+          setChatHistory(chats => chats.map(c => c.id===selectedChatId? { ...c, messages: newMessages }: c));
+      return newMessages;
         });
       } else if (data.type === 'end') {
         setIsStreaming(false);
       }
     }
   });
-
-  const handleSendMessage = (content: string) => {
-    if (!selectedChatId) {
-      console.error('No chat session selected');
-      return;
-    }
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content,
-      isUser: true,
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-    
-    if (isConnected) {
-      sendMessage({ 
-        message: content, 
-        model,
-        chatSessionId: selectedChatId
-      });
-    } else {
-      console.error('WebSocket not connected');
-    }
-  };
 
   useEffect(() => {
     if (isDarkMode) {
@@ -204,7 +82,6 @@ const Chat = () => {
     }
   }, [isDarkMode]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -212,6 +89,28 @@ const Chat = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const handleSendMessage = (content: string) => {
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content,
+      isUser: true,
+      timestamp: new Date()
+    };
+    
+    setMessages(prev => {
+      const updated = [...prev, userMessage];
+      // update chatHistory
+      setChatHistory(chats => chats.map(c => c.id===selectedChatId? { ...c, messages: updated }: c));
+      return updated;
+    });
+    
+    if (isConnected) {
+      sendMessage({ message: content, model });
+    } else {
+      simulateAIResponse(content);
+    }
+  };
 
   const simulateAIResponse = (userMessage: string) => {
     setIsStreaming(true);
@@ -225,6 +124,7 @@ const Chat = () => {
     
     setMessages(prev => {
       const updated = [...prev, aiMessage];
+      setChatHistory(chats => chats.map(c => c.id===selectedChatId? { ...c, messages: updated }: c));
       return updated;
     });
 
@@ -248,7 +148,8 @@ const Chat = () => {
             if (lastMessage && !lastMessage.isUser) {
               lastMessage.content += responses[responseIndex][charIndex];
             }
-            return newMessages;
+            setChatHistory(chats => chats.map(c => c.id===selectedChatId? { ...c, messages: newMessages }: c));
+      return newMessages;
           });
           charIndex++;
           setTimeout(typeResponse, 20 + Math.random() * 40);
@@ -263,6 +164,13 @@ const Chat = () => {
     };
 
     setTimeout(typeResponse, 500);
+  };
+
+  const startNewChat = () => {
+    const newChat: ChatSession = { id: Date.now().toString(), title: `Чат ${chatHistory.length + 1}`, date: new Date().toLocaleDateString(), messages: [] };
+    setChatHistory(prev => [newChat, ...prev]);
+    setSelectedChatId(newChat.id);
+    setMessages([]);
   };
 
   const handleAdminSave = (newModel: string) => {
@@ -296,18 +204,15 @@ const Chat = () => {
           <div className="flex-1 overflow-y-auto p-4">
             <h3 className="text-sm font-medium text-muted-foreground mb-3">История чатов</h3>
             <div className="space-y-2">
-              {chatSessions.map((chat) => (
+              {chatHistory.map((chat) => (
                 <div
-                  key={chat.id}
-                  onClick={() => setSelectedChatId(chat.id)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    chat.id === selectedChatId ? 'bg-muted' : 'hover:bg-muted/50'
-                  }`}
+                  key={chat.id} onClick={() => { setSelectedChatId(chat.id); setMessages(chat.messages); }}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors group ${chat.id===selectedChatId?'bg-muted':'hover:bg-muted'}`}
                 >
                   <MessageSquare size={16} className="text-muted-foreground" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{chat.title}</p>
-                    <p className="text-xs text-muted-foreground">{chat.created_at}</p>
+                    <p className="text-xs text-muted-foreground">{chat.date}</p>
                   </div>
                 </div>
               ))}
@@ -355,7 +260,7 @@ const Chat = () => {
                 <Menu size={20} />
               </button>
               <div>
-                <h1 className="text-lg font-semibold">{chatSessions.find(c=>c.id===selectedChatId)?.title || 'AI Chat'}</h1>
+                <h1 className="text-lg font-semibold">{chatHistory.find(c=>c.id===selectedChatId)?.title || 'AI Chat'}</h1>
                 <p className="text-sm text-muted-foreground">
                   {`${modelInfo(model).label} • ${modelInfo(model).provider}`}
                 </p>

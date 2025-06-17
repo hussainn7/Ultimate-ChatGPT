@@ -42,9 +42,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleSignOut = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('guest');
-    navigate('/auth');
+    localStorage.removeItem('et_token');
+    navigate('/login');
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -67,7 +67,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="p-6 space-y-6">
           {/* Model Selection */}
           <div className="space-y-2">
-            <label htmlFor="model" className="text-sm font-medium">Выберите AI модель</label>
+            <label htmlFor="model" className="text-sm font-medium">Choose AI Model</label>
             <select
               id="model"
               value={selectedModel}
@@ -83,32 +83,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Самая дешёвая модель выбрана по умолчанию. Сервис использует самую дешёвую модель по умолчанию.
+              The cheapest model is preselected by default. Сервис использует самую дешевую модель по умолчанию
             </p>
+          </div>
+
+          {/* Sign Out Button */}
+          <div className="pt-4 border-t border-border">
+            <button
+              onClick={handleSignOut}
+              className="w-full px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 p-6 border-t border-border">
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              Сохранить
-            </button>
-          </div>
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-border">
           <button
-            onClick={handleSignOut}
-            className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
           >
-            Выйти
+            Отмена
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Сохранить
           </button>
         </div>
       </div>
